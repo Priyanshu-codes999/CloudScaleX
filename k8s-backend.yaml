@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudscale-backend
+  namespace: cloudscale
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudscale-backend
+  template:
+    metadata:
+      labels:
+        app: cloudscale-backend
+    spec:
+      containers:
+        - name: backend
+          image: cloudscale-backend:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_URL
+              value: jdbc:postgresql://cloudscale-postgres:5432/cloudscale
+            - name: DB_USERNAME
+              value: cloudscale_user
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cloudscale-db-secret
+                  key: DB_PASSWORD
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudscale-backend
+  namespace: cloudscale
+spec:
+  selector:
+    app: cloudscale-backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP

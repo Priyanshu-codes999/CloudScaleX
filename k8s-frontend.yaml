@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudscale-frontend
+  namespace: cloudscale
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudscale-frontend
+  template:
+    metadata:
+      labels:
+        app: cloudscale-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: cloudscale-frontend:v1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudscale-frontend
+  namespace: cloudscale
+spec:
+  type: NodePort
+  selector:
+    app: cloudscale-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080

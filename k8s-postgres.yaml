@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudscale-postgres
+  namespace: cloudscale
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudscale-postgres
+  template:
+    metadata:
+      labels:
+        app: cloudscale-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: cloudscale
+            - name: POSTGRES_USER
+              value: cloudscale_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cloudscale-db-secret
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - cloudscale_user
+                - -d
+                - cloudscale
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: cloudscale-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudscale-postgres
+  namespace: cloudscale
+spec:
+  selector:
+    app: cloudscale-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP

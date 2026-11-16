@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: cloudscale-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cloudscale
+      POSTGRES_USER: cloudscale_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+  backend:
+    image: cloudscale-backend:v1
+    container_name: cloudscale-backend
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/cloudscale
+      DB_USERNAME: cloudscale_user
+      DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+  frontend:
+    image: cloudscale-frontend:v1
+    container_name: cloudscale-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Navy / charcoal surfaces */
+  --color-ink-950: #070d18;
+  --color-ink-900: #0b1424;
+  --color-ink-850: #0e1a2c;
+  --color-ink-800: #122135;
+  --color-ink-700: #1e3451;
+  --color-ink-600: #2b466b;
+  --color-ink-500: #47648c;
+  --color-ink-400: #7391b5;
+  --color-ink-300: #9ab2cc;
+  --color-ink-200: #c2d3e5;
+  --color-ink-100: #e3ecf7;
+  --color-ink-50: #f4f8fc;
+
+  /* Electric blue + cyan accents */
+  --color-electric-600: #1d63e0;
+  --color-electric-500: #2e7df6;
+  --color-electric-400: #4d9bff;
+  --color-electric-300: #82baff;
+  --color-electric-200: #b3d4ff;
+
+  --color-cyan-glow: #2fd8f0;
+  --color-emerald-glow: #35d6a4;
+  --color-amber-glow: #f5b23d;
+  --color-rose-glow: #f2647c;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-ink-950);
+  color: var(--color-ink-100);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(46, 125, 246, 0.35);
+  color: #ffffff;
+}
+
+/* Scrollbars tuned to the navy theme */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-ink-900);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-ink-700);
+  border-radius: 999px;
+  border: 2px solid var(--color-ink-900);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-600);
+}
+
+/* Numeric inputs: hide native spinners for a cleaner enterprise look */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Select dropdown arrow removal is handled inline; style the popup */
+select option {
+  background-color: var(--color-ink-900);
+  color: var(--color-ink-100);
+}
+
+/* Motion */
+@keyframes csx-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes csx-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes csx-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-in {
+  animation: csx-fade-in 0.25s ease-out;
+}
+.animate-slide-up {
+  animation: csx-slide-up 0.28s cubic-bezier(0.21, 1.02, 0.73, 1);
+}
+.toast-enter {
+  animation: csx-toast-in 0.28s cubic-bezier(0.21, 1.02, 0.73, 1);
+}

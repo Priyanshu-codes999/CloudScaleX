@@ -1,3 +1,4 @@
+
 # Stage 1: Build React application
 FROM node:22-alpine AS builder
 
@@ -9,7 +10,8 @@ RUN npm ci
 
 COPY . .
 
-ENV VITE_API_BASE_URL=http://localhost:8080
+# Empty API base URL makes the browser use the same public origin.
+ENV VITE_API_BASE_URL=
 
 RUN npm run build
 

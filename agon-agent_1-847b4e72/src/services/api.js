@@ -3,11 +3,13 @@
  * CloudScale X — backend API service.
  *
  * All requests connect to the Spring Boot backend.
+ * In production, requests use the same origin and are
+ * forwarded by Nginx to the Kubernetes backend Service.
  * No mock data, fallback fixtures or invented pricing.
  */
 
 const ENV_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+  import.meta.env.VITE_API_BASE_URL ?? ''
 ).trim();
 
 const STORAGE_KEY = 'cloudscalex.apiBaseUrl';
@@ -151,7 +153,9 @@ async function request(
     }
 
     throw new ApiError(
-      `Unable to reach CloudScale X backend at ${getApiBaseUrl()}. Check the Spring Boot service and CORS configuration.`,
+      `Unable to reach CloudScale X backend at ${
+        getApiBaseUrl() || window.location.origin
+      }. Check the backend and Nginx proxy configuration.`,
       { kind: 'network' }
     );
   } finally {

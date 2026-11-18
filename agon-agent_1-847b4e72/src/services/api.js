@@ -2,22 +2,26 @@
 /**
  * CloudScale X — backend API service.
  *
- * All requests connect to the Spring Boot backend.
- * In production, requests use the same origin and are
- * forwarded by Nginx to the Kubernetes backend Service.
- * No mock data, fallback fixtures or invented pricing.
+ * Development:
+ * Vite proxy forwards /api requests to Spring Boot.
+ *
+ * Production:
+ * Nginx forwards /api requests to Kubernetes backend.
  */
 
-const ENV_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL ?? ''
-).trim();
+const ENV_BASE_URL = '';
 
 const STORAGE_KEY = 'cloudscalex.apiBaseUrl';
+const TOKEN_STORAGE_KEY = 'cloudscalex.authToken';
+const USER_STORAGE_KEY = 'cloudscalex.authUser';
+
 const REQUEST_TIMEOUT_MS = 10000;
 const HEALTH_TIMEOUT_MS = 6000;
 
 export const API_ENDPOINTS = [
-  { method: 'GET', path: '/api/v1/workloads', summary: 'List all workloads.' },
+  { method: 'POST', path: '/api/v1/auth/register', summary: 'Register a user.' },
+  { method: 'POST', path: '/api/v1/auth/login', summary: 'Login a user.' },
+  { method: 'GET', path: '/api/v1/workloads', summary: 'List current user workloads.' },
   { method: 'POST', path: '/api/v1/workloads', summary: 'Create a workload.' },
   { method: 'GET', path: '/api/v1/workloads/{id}', summary: 'Get workload by ID.' },
   { method: 'PUT', path: '/api/v1/workloads/{id}', summary: 'Update a workload.' },
@@ -44,6 +48,71 @@ export class ApiError extends Error {
 }
 
 /* -------------------------------------------------- */
+/* Authentication storage                            */
+/* -------------------------------------------------- */
+
+export function getAuthToken() {
+  try {
+    return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function getCurrentUser() {
+  try {
+    const user = window.localStorage.getItem(USER_STORAGE_KEY);
+    return user ? JSON.parse(user) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearAuthSession() {
+  try {
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(USER_STORAGE_KEY);
+  } catch {
+    // Storage unavailable.
+  }
+}
+
+function saveAuthSession(response) {
+  if (!response?.token) {
+    throw new ApiError(
+      'Authentication response did not contain a token.',
+      { kind: 'auth' }
+    );
+  }
+
+  try {
+    window.localStorage.setItem(
+      TOKEN_STORAGE_KEY,
+      response.token
+    );
+
+    window.localStorage.setItem(
+      USER_STORAGE_KEY,
+      JSON.stringify({
+        userId: response.userId,
+        email: response.email,
+      })
+    );
+  } catch {
+    throw new ApiError(
+      'Unable to save the login session.',
+      { kind: 'storage' }
+    );
+  }
+
+  return getCurrentUser();
+}
+
+export function logout() {
+  clearAuthSession();
+}
+
+/* -------------------------------------------------- */
 /* Base URL management                                */
 /* -------------------------------------------------- */
 
@@ -56,7 +125,7 @@ export function getApiBaseUrl() {
 
   try {
     saved = window.localStorage.getItem(STORAGE_KEY);
-  } catch (err) {
+  } catch {
     saved = null;
   }
 
@@ -70,12 +139,12 @@ export function setApiBaseUrl(url) {
   const cleaned = (url || '').trim().replace(/\/+$/, '');
 
   try {
-    if (!cleaned || cleaned === ENV_BASE_URL.replace(/\/+$/, '')) {
+    if (!cleaned) {
       window.localStorage.removeItem(STORAGE_KEY);
     } else {
       window.localStorage.setItem(STORAGE_KEY, cleaned);
     }
-  } catch (err) {
+  } catch {
     // Storage unavailable.
   }
 }
@@ -83,7 +152,7 @@ export function setApiBaseUrl(url) {
 export function resetApiBaseUrl() {
   try {
     window.localStorage.removeItem(STORAGE_KEY);
-  } catch (err) {
+  } catch {
     // No operation required.
   }
 }
@@ -119,7 +188,12 @@ function extractMessage(payload, status) {
 
 async function request(
   path,
-  { method = 'GET', body, timeout = REQUEST_TIMEOUT_MS } = {}
+  {
+    method = 'GET',
+    body,
+    timeout = REQUEST_TIMEOUT_MS,
+    authenticated = true,
+  } = {}
 ) {
   const controller = new AbortController();
 
@@ -130,18 +204,27 @@ async function request(
 
   let response;
 
+  const headers = {
+    Accept: 'application/json',
+  };
+
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  if (authenticated) {
+    const token = getAuthToken();
+
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  }
+
   try {
     response = await fetch(buildUrl(path), {
       method,
-      headers: body
-        ? {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          }
-        : {
-            Accept: 'application/json',
-          },
-      body: body ? JSON.stringify(body) : undefined,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     });
   } catch (err) {
@@ -155,7 +238,7 @@ async function request(
     throw new ApiError(
       `Unable to reach CloudScale X backend at ${
         getApiBaseUrl() || window.location.origin
-      }. Check the backend and Nginx proxy configuration.`,
+      }. Check the backend and proxy configuration.`,
       { kind: 'network' }
     );
   } finally {
@@ -169,12 +252,20 @@ async function request(
   if (raw) {
     try {
       payload = JSON.parse(raw);
-    } catch (err) {
+    } catch {
       payload = raw;
     }
   }
 
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      authenticated &&
+      getAuthToken()
+    ) {
+      clearAuthSession();
+    }
+
     throw new ApiError(
       extractMessage(payload, response.status),
       {
@@ -185,6 +276,52 @@ async function request(
   }
 
   return payload;
+}
+
+/* -------------------------------------------------- */
+/* Authentication API                                 */
+/* -------------------------------------------------- */
+
+export async function registerUser({ email, password }) {
+  const payload = await request(
+    '/api/v1/auth/register',
+    {
+      method: 'POST',
+      authenticated: false,
+      body: {
+        email: email.trim().toLowerCase(),
+        password,
+      },
+    }
+  );
+
+  saveAuthSession(payload);
+
+  return {
+    user: getCurrentUser(),
+    tokenType: payload.tokenType || 'Bearer',
+  };
+}
+
+export async function loginUser({ email, password }) {
+  const payload = await request(
+    '/api/v1/auth/login',
+    {
+      method: 'POST',
+      authenticated: false,
+      body: {
+        email: email.trim().toLowerCase(),
+        password,
+      },
+    }
+  );
+
+  saveAuthSession(payload);
+
+  return {
+    user: getCurrentUser(),
+    tokenType: payload.tokenType || 'Bearer',
+  };
 }
 
 /* -------------------------------------------------- */
@@ -461,7 +598,6 @@ function toRows(payload, keys) {
 /* Workload API endpoints                             */
 /* -------------------------------------------------- */
 
-// GET /api/v1/workloads
 export async function fetchWorkloads() {
   const payload = await request('/api/v1/workloads');
 
@@ -482,7 +618,6 @@ export async function fetchWorkloads() {
   return rows.map(normalizeWorkload).filter(Boolean);
 }
 
-// POST /api/v1/workloads
 export async function createWorkload(payload) {
   const body = {
     applicationName: payload.applicationName,
@@ -500,7 +635,6 @@ export async function createWorkload(payload) {
   return normalizeWorkload(created);
 }
 
-// GET /api/v1/workloads/{id}
 export async function fetchWorkload(id) {
   const payload = await request(
     `/api/v1/workloads/${encodeURIComponent(id)}`
@@ -520,7 +654,6 @@ export async function fetchWorkload(id) {
   return workload;
 }
 
-// PUT /api/v1/workloads/{id}
 export async function updateWorkload(id, payload) {
   const body = {
     applicationName: payload.applicationName,
@@ -538,7 +671,6 @@ export async function updateWorkload(id, payload) {
   return normalizeWorkload(updated);
 }
 
-// DELETE /api/v1/workloads/{id}
 export async function deleteWorkload(id) {
   return request(
     `/api/v1/workloads/${encodeURIComponent(id)}`,
@@ -550,7 +682,6 @@ export async function deleteWorkload(id) {
 /* Placement API                                      */
 /* -------------------------------------------------- */
 
-// GET /api/v1/placement/{id}
 export async function fetchPlacement(id) {
   const payload = await request(
     `/api/v1/placement/${encodeURIComponent(id)}`
@@ -563,7 +694,6 @@ export async function fetchPlacement(id) {
 /* Cost API                                           */
 /* -------------------------------------------------- */
 
-// GET /api/v1/cost/{id}
 export async function fetchCost(id) {
   const payload = await request(
     `/api/v1/cost/${encodeURIComponent(id)}`
